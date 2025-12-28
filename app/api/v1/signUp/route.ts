@@ -7,7 +7,6 @@ import bcrypt from "bcryptjs";
 import { cookies } from "next/headers";
 import { NextRequest, NextResponse } from "next/server";
 import jwt from 'jsonwebtoken'
-import mongoose from "mongoose";
 import { TokenInterface } from "@/interfaces/Token/token";
 
 export async function POST(req:NextRequest) :Promise<NextResponse<SignUpResponse>> {
