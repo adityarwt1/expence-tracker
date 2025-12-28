@@ -1,5 +1,5 @@
 import { StanderedInterface } from "../Standered/standeredResponse";
 
-export interface SignInResponse extends StanderedInterface {
+export interface SignUpResponse extends StanderedInterface {
     token?:string
 }
