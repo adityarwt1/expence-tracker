@@ -1,23 +1,33 @@
 import mongoose, { Schema } from "mongoose";
 
-interface UserDocumentInterface  {
-    email:string,
-    password:string    
+export interface UserDocumentInterface {
+  email: string;
+  password: string;
+  createdAt: Date;
+  updatedAt: Date;
 }
 
-const UserSchema :Schema<UserDocumentInterface> = new Schema({
-    email:{
-        type:String,
-        required:true
+const UserSchema = new Schema<UserDocumentInterface>(
+  {
+    email: {
+      type: String,
+      required: true,
+      unique: true,
+      lowercase: true,
+      trim: true,
     },
-    password:{
-        type:String,
-        required:true,
-    }
-},{
-    timestamps:true
-})
+    password: {
+      type: String,
+      required: true,
+    },
+  },
+  {
+    timestamps: true,
+  },
+);
 
-const User  = mongoose.models.User || mongoose.model<UserDocumentInterface>("User", UserSchema)
+const User =
+  (mongoose.models.User as mongoose.Model<UserDocumentInterface>) ||
+  mongoose.model<UserDocumentInterface>("User", UserSchema);
 
 export default User;

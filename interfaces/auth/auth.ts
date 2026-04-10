@@ -1,5 +1,8 @@
-import { StanderedInterface } from "../Standered/standeredResponse";
+import { ApiResponse } from "../Standered/standeredResponse";
 
-export interface SignUpResponse extends StanderedInterface {
-    token?:string
+export interface SignUpPayload {
+  token: string;
+  email: string;
 }
+
+export type SignUpResponse = ApiResponse<SignUpPayload>;

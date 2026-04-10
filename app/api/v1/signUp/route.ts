@@ -1,111 +1,115 @@
 import { SignUpResponse } from "@/interfaces/auth/auth";
-import { StatusCode, StatusText } from "@/interfaces/Standered/standeredResponse";
+import {
+  StatusCode,
+  StatusText,
+} from "@/interfaces/Standered/standeredResponse";
+import { signAuthToken, setAuthCookie } from "@/lib/auth";
+import { createStarterExpenses } from "@/lib/expense-service";
 import { mongoconnect } from "@/lib/mongodb";
 import User from "@/mongoose/User";
-import { signInbodyValidation } from "@/zod/authValidation";
+import { signUpBodyValidation } from "@/zod/authValidation";
 import bcrypt from "bcryptjs";
-import { cookies } from "next/headers";
 import { NextRequest, NextResponse } from "next/server";
-import jwt from 'jsonwebtoken'
-import { TokenInterface } from "@/interfaces/Token/token";
 
-export async function POST(req:NextRequest) :Promise<NextResponse<SignUpResponse>> {
-    const cookie = await cookies()
-    try {
-        const body  = await req.json()
+export async function POST(
+  req: NextRequest,
+): Promise<NextResponse<SignUpResponse>> {
+  try {
+    const body = await req.json().catch(() => null);
 
-        if(!body){
-            return NextResponse.json({
-                status:StatusCode.BAD_REQUEST,
-                success:false,
-                error:StatusText.BAD_REQUEST,
-                message:"Body not provided properly!"
-            },{
-                status:StatusCode.BAD_REQUEST
-            })
-        }
-
-        const isValidRequestBody = signInbodyValidation.safeParse(body)
-
-        if(!isValidRequestBody.success){
-            return NextResponse.json({
-                status:StatusCode.BAD_REQUEST,
-                success:false,
-                error:StatusText.BAD_REQUEST
-            },{
-                status:StatusCode.BAD_REQUEST
-            })
-        }
-
-        const isConnected = await mongoconnect()
-
-        if(!isConnected){
-            return NextResponse.json({
-                status:StatusCode.INTERNAL_SERVER_ERROR,
-                success:false,
-                error:StatusText.INTERNAL_SERVER_ERROR,
-                message:"Failed to connet databse"
-            },{
-                status:StatusCode.INTERNAL_SERVER_ERROR
-            })
-        }
-
-        const hashedPassword = await bcrypt.hash(body.password, 10)
-
-        if(!hashedPassword){
-            return NextResponse.json({
-                status:StatusCode.INTERNAL_SERVER_ERROR,
-                success:false,
-                error:StatusText.INTERNAL_SERVER_ERROR
-            },{
-                status:StatusCode.INTERNAL_SERVER_ERROR
-            })
-        }
-        let user;
-
-        try {
-            user =   new User({...body, password:hashedPassword}) 
-            await user.save()
-        } catch (error) {
-            return NextResponse.json({
-                status:StatusCode.INTERNAL_SERVER_ERROR,
-                success:false,
-                error:StatusText.INTERNAL_SERVER_ERROR
-            },{
-                status:StatusCode.INTERNAL_SERVER_ERROR
-            })
-        }
-
-        const tokenPayload :TokenInterface= {
-            _id: user._id
-        }
-        let token;
-        try {
-        token = jwt.sign(tokenPayload , process.env.JWT_SECRET as string)
-        } catch (error) {
-            return NextResponse.json({
-                status:StatusCode.INTERNAL_SERVER_ERROR,
-                success:false,
-                error:StatusText.INTERNAL_SERVER_ERROR,
-                message:"Failed to create token"
-            })
-        }
-
-        cookie.set(process.env.COOKIE_NAME as string , token)
-
-        return NextResponse.json({
-            status:StatusCode.CREATED,
-            token,
-            success:true,
-        })
-    } catch (error) {
-        console.log(error)
-        return  NextResponse.json({
-            status:StatusCode.INTERNAL_SERVER_ERROR,
-            success:false,
-            error:StatusText.INTERNAL_SERVER_ERROR,
-            message:(error as Error).message
-        })
+    if (!body) {
+      return NextResponse.json(
+        {
+          success: false,
+          status: StatusCode.BAD_REQUEST,
+          error: StatusText.BAD_REQUEST,
+          message: "Request body is missing.",
+        },
+        {
+          status: StatusCode.BAD_REQUEST,
+        },
+      );
     }
-    
+
+    const parsedBody = signUpBodyValidation.safeParse(body);
+
+    if (!parsedBody.success) {
+      return NextResponse.json(
+        {
+          success: false,
+          status: StatusCode.BAD_REQUEST,
+          error: StatusText.BAD_REQUEST,
+          message:
+            parsedBody.error.issues[0]?.message || "Invalid signup details.",
+        },
+        {
+          status: StatusCode.BAD_REQUEST,
+        },
+      );
+    }
+
+    await mongoconnect();
+
+    const existingUser = await User.findOne({
+      email: parsedBody.data.email,
+    }).lean();
+
+    if (existingUser) {
+      return NextResponse.json(
+        {
+          success: false,
+          status: StatusCode.CONFLICT,
+          error: StatusText.CONFLICT,
+          message: "An account with this email already exists.",
+        },
+        {
+          status: StatusCode.CONFLICT,
+        },
+      );
+    }
+
+    const hashedPassword = await bcrypt.hash(parsedBody.data.password, 12);
+
+    const user = await User.create({
+      email: parsedBody.data.email,
+      password: hashedPassword,
+    });
+
+    await createStarterExpenses(String(user._id));
+
+    const token = signAuthToken({
+      _id: String(user._id),
+    });
+
+    await setAuthCookie(token);
+
+    return NextResponse.json(
+      {
+        success: true,
+        status: StatusCode.CREATED,
+        message: "Account created successfully.",
+        data: {
+          token,
+          email: user.email,
+        },
+      },
+      {
+        status: StatusCode.CREATED,
+      },
+    );
+  } catch (error) {
+    console.error(error);
+
+    return NextResponse.json(
+      {
+        success: false,
+        status: StatusCode.INTERNAL_SERVER_ERROR,
+        error: StatusText.INTERNAL_SERVER_ERROR,
+        message: "Unable to create your account right now.",
+      },
+      {
+        status: StatusCode.INTERNAL_SERVER_ERROR,
+      },
+    );
+  }
 }
